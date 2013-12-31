@@ -7,7 +7,8 @@
 # Two statistics can be merged together
 # The core class is LiveStat that supports numbers
 #
-# Works is in progress to support: numpy arrays, tuples/lists
+# Future: numpy arrays, tuples/lists, so far only scalar
+#
 #
 # Last Updated: 31 December 2013
 #
@@ -15,6 +16,11 @@
 
 from collections import defaultdict
 import math
+try:
+    import numpy
+except:
+    numpy = None
+
 
 class LiveStat:
     """ LiveStat allows to compute statistics over variables as they are produced"""
@@ -75,66 +81,137 @@ class LiveStat:
     def __imul__(self,value):
         """Updates the statistics as if all the input values were (x*value)
         """
-        if self.vmin is not None:
-            # mu(s x) = 1/N sum s x = s/N sum x
-            self.vmean *= value
-            if value < 0:
-                m = self.vmin
-                M = self.vmax
-                self.vmin = M*value
-                self.vmax = m*value
-            else:
-                self.vmin *= value
-                self.vmax *= value
-            self.vsum *= value
-            # vm2(s x) = sum (s x - mu(s x))^2 = sum (s x - s mu(x))^2 = sum s^2 (x - mu(x))^2 = s^2 sum (x - mu(x))^2 = s^2 vm^2
-            self.vm2 *= value*value
-            self.dirty = True
+        if isinstance(value,LiveStat):
+            raise Exception ("Product of Statistics is not supported")
+        else:
+            if self.vmin is not None:
+                # mu(s x) = 1/N sum s x = s/N sum x
+                self.vmean *= value
+                if value < 0:
+                    m = self.vmin
+                    M = self.vmax
+                    self.vmin = M*value
+                    self.vmax = m*value
+                else:
+                    self.vmin *= value
+                    self.vmax *= value
+                self.vsum *= value
+                # vm2(s x) = sum (s x - mu(s x))^2 = sum (s x - s mu(x))^2 = sum s^2 (x - mu(x))^2 = s^2 sum (x - mu(x))^2 = s^2 vm^2
+                self.vm2 *= value*value
+                self.dirty = True
         return self
 
     def __idiv__(self,value):
         """Updates the statistics as if all the input values were (x/value)"""
-        if self.vmin is not None:
-            # mu(s x) = 1/N sum s x = s/N sum x
-            self.vmean /= value
-            if value < 0:
-                m = self.vmin
-                M = self.vmax
-                self.vmin = M/value
-                self.vmax = m/value
-            else:
-                self.vmin /= value
-                self.vmax /= value
-            self.vsum /= value
-            # vm2(s x) = sum (s x - mu(s x))^2 = sum (s x - s mu(x))^2 = sum s^2 (x - mu(x))^2 = s^2 sum (x - mu(x))^2 = s^2 vm^2
-            self.vm2 /= value*value
-            self.dirty = True
-        return self
-
-    def __isub__(self,value):
-        """Updates the statistics as if all the values were (x-value)"""
-        if self.vmin is not None:
-            self.vmin -= value
-            self.vmax -= value
-            self.vmean -= value
-            self.vsum -= self.vcount*value
-            self.dirty = True
+        if isinstance(value,LiveStat):
+            raise Exception ("Ratio of Statistics is not supported")
         else:
-            pass
+            if self.vmin is not None:
+                # mu(s x) = 1/N sum s x = s/N sum x
+                self.vmean /= value
+                if value < 0:
+                    m = self.vmin
+                    M = self.vmax
+                    self.vmin = M/value
+                    self.vmax = m/value
+                else:
+                    self.vmin /= value
+                    self.vmax /= value
+                self.vsum /= value
+                # vm2(s x) = sum (s x - mu(s x))^2 = sum (s x - s mu(x))^2 = sum s^2 (x - mu(x))^2 = s^2 sum (x - mu(x))^2 = s^2 vm^2
+                self.vm2 /= value*value
+                self.dirty = True
         return self
 
+
+    def __add__(self,value):
+        x = self.clone()
+        if isinstance(value,LiveStat):
+            x.name = "(" + self.name + "+" + value.name + ")"
+        else:
+            x.name = "(" + self.name + "+ scalar)"
+        x += value
+        return x
+    def __sub__(self,value):
+        x = self.clone()
+        if isinstance(value,LiveStat):
+            x.name = "(" + self.name + "-" + value.name + ")"
+        else:
+            x.name = "(" + self.name + "- scalar)"
+        x -= value
+        return x
+    def __mul__(self,value):
+        x = self.clone()
+        if isinstance(value,LiveStat):
+            x.name = "(" + self.name + "*" + value.name + ")"
+        else:
+            x.name = "(" + self.name + "* scalar)"
+        x *= value
+        return x
+    def __div__(self,value):
+        x = self.clone()
+        if isinstance(value,LiveStat):
+            x.name = "(" + self.name + "/" + value.name + ")"
+        else:
+            x.name = "(" + self.name + "/ scalar)"
+        x /= value
+        return x    
     def __iadd__(self,value):
-        """Updates the statistics as if all the values were (x+value)"""
-        if self.vmin is not None:
-            self.vmin += value
-            self.vmax += value
-            self.vmean += value
-            self.vsum += self.vcount*value
-            self.dirty = True
+        """Updates the statistics as if all the values were (x+scalar) or (x+value)"""
+        if isinstance(value,LiveStat):
+            if value.vcount < 1 or self.vcount < 1:
+                raise Exception("Cannot sum empty statistics")
+            else:
+                # sum of two considered pairwise: z_i = stat(x_i + y_i)
+                #
+                # data have different weights due to number of samples.. TODO
+                self.vmin += value.vmin 
+                self.vmax += value.vmax
+                self.vmean += value.vmean
+                self.vsum += value.vsum
+                # variance is sum of variance?
+                self.vm2 += value.vm2
+                self.vcount = min(value.vcount,self.vcount)
+                self.dirty = True
         else:
-            pass
+            # constant bias
+            if self.vmin is not None:
+                self.vmin += value
+                self.vmax += value
+                self.vmean += value
+                self.vsum += self.vcount*value
+                self.dirty = True
         return self
-
+    def __isub__(self,value):
+        """Updates the statistics as if all the values were (x-value) and (x-y)"""
+        if isinstance(value,LiveStat):
+            if value.vcount < 1 or self.vcount < 1:
+                raise Exception("Cannot sum empty statistics")
+            else:
+                # sum of two considered pairwise: z_i = stat(x_i - y_i)
+                #
+                # data have different weights due to number of samples.. TODO
+                self.vmin = self.vmin-value.vmax
+                self.vmax = self.vmax-value.vmin
+                self.vmean -= value.vmean
+                self.vsum -= value.vsum
+                # variance is sum of variance in any case
+                self.vm2 += value.vm2
+                self.vcount = min(self.vcount,value.vcount)
+                self.dirty = True
+        else:
+            # constant bias
+            if self.vmin is not None:
+                self.vmin -= value
+                self.vmax -= value
+                self.vmean -= value
+                self.vsum -= self.vcount*value
+                self.dirty = True
+        return self    
+    def clone(self):
+        r = LiveStat(self.name)
+        r.copy(self)
+        return r
     def copy(self,other):
         """Assignment from the other"""
         if other.vcount == 0:
@@ -156,10 +233,11 @@ class LiveStat:
             self.vcount = 1
             self.vmin = x
             self.vmax = x
-            self.vstd2 = 0
             self.vsum = x
             self.vmean = x
+            self.vstd2 = 0
             self.vm2 = 0
+            self.dirty = False
         else:
             self.vcount += 1
             # multivalue minimum
@@ -171,16 +249,15 @@ class LiveStat:
             self.vmean += dvold/self.vcount # incremental mean (good for vectorial)
             self.vm2 += (x-self.vmean)*dvold # incremental quadratic for variance (good for vectorial)
             self.vsum += x
-        self.dirty = True
+            self.dirty = True
     def _finalize(self):
         """Private Finalize the interal counter to update the variance"""
-        if self.vcount > 0:
-            self.vstd2 = self.vm2/self.vcount
+        if self.vcount > 1:
+            self.vstd2 = self.vm2/(self.vcount-1)
         else:
             self.vstd2 = 0
             self.vmean = 0
         self.dirty = False
-
     def merge(self,other):
         """Merges the current statistics with the other"""
         if self.empty:            
@@ -228,9 +305,14 @@ class DeltaLiveStat(LiveStat):
         """Reset only the last, but not the inner statistics. Equivalent to adding None"""
         self.last = None
         self.dlast = 0
+    def clone(self):
+        r = DeltaLiveStat(self.name)
+        r.copy(self)
+        return r
     def copy(self,other):
         LiveStat.copy(self,other)
         self.last = other.last
+        self.dlast = other.dlast
         return self
     def add(self,x):
         """Adds a new item. If x is None this means to reset the input"""
@@ -308,26 +390,28 @@ class Histogram:
         
 if __name__ == "__main__":
 
-    x = LiveStat()
+    x = LiveStat("x")
     x.add(10)
     x.add(20)
     x.add(15)
 
-    y = LiveStat()
+    y = LiveStat("y")
     y.add(210)
     y.add(220)
     y.add(215)
     print "x",x
     print "y",y
 
+    print "sum of x and y",y+x
+    print "difference of x and y",x-y
     print "merge x and y",y.merge(x)
 
     print "ops"
     print "x",x
     x += 2
     print "x+2",x
-    x *= -2
-    print "(x+2)*-2",x
+    #x *= -2
+    print "(x+2)*-2",x*-2
 
     x = DeltaLiveStat()
     x.add(10)
