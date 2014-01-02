@@ -9,6 +9,8 @@
 #
 # Future: numpy arrays, tuples/lists, so far only scalar
 #
+# For online algorithm source:
+# http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
 #
 # Last Updated: 31 December 2013
 #
@@ -42,6 +44,24 @@ class LiveStat:
         """Returns the sum of the values. None if no items"""
         return self.vsum
     @property
+    def kurtosis(self):
+        """Returns the kurtosis of the distribution, that is the flatness. Zero for Gaussians"""
+        self._finalize()
+        return self.vkurtosis
+    @property
+    def skewness(self):
+        """Returns the skewness as the asymmetri before/after the mean. Zero for Gaussians"""
+        self._finalize()
+        return self.vskewness
+    @property
+    def jarquebetatest(self,alpha=0.05):
+        """Returns the Jarque-Beta test of normality based on kurtosis and skewness"""
+        self._finalize()
+        JB = self.vcount/6*(self.vskewness**2 + 1/4*((self.vkurtosis-2)**2))
+        #the JB statistic asymptotically has a chi-squared distribution with two degrees of freedom, so the statistic can be used to test the hypothesis that the data are from a normal distribution.
+        """If the data comes from a normal distribution, the JB statistic asymptotically has a chi-squared distribution with two degrees of freedom, so the statistic can be used to test the hypothesis that the data are from a normal distribution. The null hypothesis is a joint hypothesis of the skewness being zero and the excess kurtosis being zero. Samples from a normal distribution have an expected skewness of 0 and an expected excess kurtosis of 0 (which is the same as a kurtosis of 3). As the definition of JB shows, any deviation from this increases the JB statistic."""
+        raise Exception("Not implemented")
+    @property
     def mean(self):
         """Returns the sample mean of the values. None if no items"""
         return self.vmean
@@ -58,24 +78,46 @@ class LiveStat:
         """Returns the sample variance of the values. None if no items"""
         if self.dirty:
             self._finalize()
-        return self.vstd2
+        return self.vvar
 
     @property
     def std(self):
         """Returns the sample standard deviation of the values. None if no items"""
         if self.dirty:
             self._finalize()
-        return math.sqrt(self.vstd2)
+        return math.sqrt(self.vvar)
 
     def reset(self):
         """Resets the accumulator"""
         self.vmin = None
         self.vmax = None
         self.vmean = None
-        self.vstd2 = None
+        self.vvar = None
         self.vsum = None
         self.vm2 = None
         self.vcount = None
+        self.vcount2 = None
+        self.dirty = False
+        self.vcurtosis = None
+        self.vskewness = None
+    def _finalize(self):
+        """Private Finalize the interal counter to update the variance"""
+        if self.vcount > 1:
+            # skewness = g1 = sqrt(n) M3/(M2^(3/2)) # zero 
+            # kurtosis = g2 = n M4/M2^2 - 3 # zero for normal
+            #    sk = (M3/nf)/(sigma**3)
+            #    ku = (M4/nf)/sigma**4 - 3
+            n = self.vcount
+            nf = float(n)
+            mu2 = self.vm2/nf
+            self.vvar = self.vm2/(nf-1)
+            self.vskewness = self.vm3/nf/(mu2**1.5)
+            self.vkurtosis = self.vm4/nf/(mu2**2)
+        elif self.vcount == 1:
+            self.vvar = 0
+            self.vmean = 0
+            self.vskewness = 0
+            self.vkurtosis = 0
         self.dirty = False
 
     def __imul__(self,value):
@@ -96,8 +138,8 @@ class LiveStat:
                     self.vmin *= value
                     self.vmax *= value
                 self.vsum *= value
-                # vm2(s x) = sum (s x - mu(s x))^2 = sum (s x - s mu(x))^2 = sum s^2 (x - mu(x))^2 = s^2 sum (x - mu(x))^2 = s^2 vm^2
                 self.vm2 *= value*value
+                # no effect on vm4
                 self.dirty = True
         return self
 
@@ -159,6 +201,7 @@ class LiveStat:
     def __iadd__(self,value):
         """Updates the statistics as if all the values were (x+scalar) or (x+value)"""
         if isinstance(value,LiveStat):
+            raise Exception("Cannot sum statistics")
             if value.vcount < 1 or self.vcount < 1:
                 raise Exception("Cannot sum empty statistics")
             else:
@@ -171,7 +214,9 @@ class LiveStat:
                 self.vsum += value.vsum
                 # variance is sum of variance?
                 self.vm2 += value.vm2
+                # TODO vm3 vm4
                 self.vcount = min(value.vcount,self.vcount)
+                self.vcount2 = self.vcount**2
                 self.dirty = True
         else:
             # constant bias
@@ -185,6 +230,7 @@ class LiveStat:
     def __isub__(self,value):
         """Updates the statistics as if all the values were (x-value) and (x-y)"""
         if isinstance(value,LiveStat):
+            raise Exception("Cannot sum statistics")
             if value.vcount < 1 or self.vcount < 1:
                 raise Exception("Cannot sum empty statistics")
             else:
@@ -197,7 +243,9 @@ class LiveStat:
                 self.vsum -= value.vsum
                 # variance is sum of variance in any case
                 self.vm2 += value.vm2
+                # TODO vm3 vm4
                 self.vcount = min(self.vcount,value.vcount)
+                self.vcount2 = self.vcount**2
                 self.dirty = True
         else:
             # constant bias
@@ -218,46 +266,55 @@ class LiveStat:
             self.reset()
         else:
             self.vcount = other.vcount
+            self.vcount2 = other.vcount2
             self.vmin = other.vmin
             self.vmax = other.vmax
-            self.dirty = other.dirty
-            self.vstd2 = other.vstd2
             self.vm2 = other.vm2
+            self.vm3 = other.vm3
+            self.vm4 = other.vm4
             self.vmean = other.vmean
             self.vsum = other.vsum
             self.name = other.name
+            self.dirty = True
         return self
     def add(self,x):
         """Appends a new item"""
         if self.vcount is None:
             self.vcount = 1
+            self.vcount2 = 1
             self.vmin = x
             self.vmax = x
             self.vsum = x
             self.vmean = x
-            self.vstd2 = 0
             self.vm2 = 0
-            self.dirty = False
+            self.vm3 = 0
+            self.vm4 = 0
+            self.dirty = True
         else:
-            self.vcount += 1
-            # multivalue minimum
+            nA = self.vcount
+            nAA = self.vcount2
+            nX = nA+1
+            nXX = nX**2
+            nXXX = nX**3
+            self.vcount = nX
+            self.vcount2 = nXX
+
             if x < self.vmin:
                 self.vmin = x
             if x > self.vmax:
                 self.vmax = x
-            dvold = x-self.vmean
-            self.vmean += dvold/self.vcount # incremental mean (good for vectorial)
-            self.vm2 += (x-self.vmean)*dvold # incremental quadratic for variance (good for vectorial)
+
+            delta = x-self.vmean
+            delta2 = delta**2
+            delta3 = delta**3
+            delta4 = delta**4
+            self.vmean += delta/nX # incremental mean (good for vectorial)
+            self.vm2 += (x-self.vmean)*delta # incremental quadratic for variance (good for vectorial)
+            self.vm3 += delta3*(nA*(nA-1))/nXX - 3*delta*self.vm2/nX
+            self.vm4 += delta4*(nA*(nAA-nA+1))/nXXX + 6*delta2*(self.vm2)/nXX - 4*delta*self.vm3/nX
             self.vsum += x
+
             self.dirty = True
-    def _finalize(self):
-        """Private Finalize the interal counter to update the variance"""
-        if self.vcount > 1:
-            self.vstd2 = self.vm2/(self.vcount-1)
-        else:
-            self.vstd2 = 0
-            self.vmean = 0
-        self.dirty = False
     def merge(self,other):
         """Merges the current statistics with the other"""
         if self.empty:            
@@ -270,14 +327,28 @@ class LiveStat:
         if(other.vmax > self.vmax):
             self.vmax = other.vmax
 
-        vcountold = self.vcount;
-        self.vcount += other.vcount;
+        nA = float(self.vcount)
+        nB = float(other.vcount)
+        nAB = nA*nB
+        nAA = float(self.vcount2)
+        nBB = float(other.vcount2)
+        nX = nA+nB
+        nXX = nX**2 #nAA+nBB+2*nAB #nX**2 # actually (nA+nB)^2 = (nAA+nBB+2*nAB)
+        nXXX = nXX*nX
+        self.vcount = nX
+        self.vcount2 = nXX
+
         self.vsum += other.vsum;
 
         # merge of mean and m2
         delta = other.vmean-self.vmean;
-        self.vmean += delta*other.vcount/self.vcount;
-        self.vm2 += other.vm2 + delta*delta*(other.vcount*vcountold)/self.vcount;
+        delta2 = delta**2
+        delta3 = delta**3
+        delta4 = delta**4
+        self.vmean += delta*nB/nA
+        self.vm2 += other.vm2 + delta2*(nAB/nX)
+        self.vm3 += other.vm3 + delta3*(nAB*(nA-nB))/nXX + 3*delta*(nA*other.vm2-nB*self.vm2)/nX
+        self.vm4 += other.vm4 + delta4*(nAB*(nAA-nAB+nBB))/nXXX + 6*delta2*(nAA*other.vm2+nBB*self.vm2)/nXX + 4*delta*(nA*other.vm3-nB*self.vm3)/nX
         self.dirty = True
         return self
     def __str__(self):
@@ -287,7 +358,7 @@ class LiveStat:
         if self.name != "":
             np += ","
         if self.vcount > 0:
-            return "LiveStat(%smean=%s,std=%s,min=%s,max=%s,count=%d)" % (np,self.vmean,self.std,self.vmin,self.vmax,self.vcount)
+            return "LiveStat(%smean=%s,std=%s,min=%s,max=%s,skew=%s,kurt=%s,count=%d)" % (np,self.vmean,self.std,self.vmin,self.vmax,self.skewness,self.kurtosis,self.vcount)
         else:
             return "LiveStat(%sempty)" % np
 
@@ -387,7 +458,8 @@ class Histogram:
         self.count = 0
     def _finalize(self):
         pass
-        
+
+
 if __name__ == "__main__":
 
     x = LiveStat("x")
@@ -402,8 +474,8 @@ if __name__ == "__main__":
     print "x",x
     print "y",y
 
-    print "sum of x and y",y+x
-    print "difference of x and y",x-y
+    #M3 and M4 prevent this: print "sum of x and y",y+x
+    #M3 and M4 prevent this: print "difference of x and y",x-y
     print "merge x and y",y.merge(x)
 
     print "ops"
@@ -418,6 +490,17 @@ if __name__ == "__main__":
     x.add(20)
     x.add(15)
     print x
+
+    X = [0.7481,-0.1924,0.8886,-0.7648,-1.4023,-1.4224,0.4882,-0.1774,-0.1961,1.4193]
+    matstat = dict(count=len(X),mean=-0.0611,var=0.9162,skewness=-0.0658,kurtosis=1.9194,std=0.9572)
+    ourstat = dict(count=len(X),mean=-0.061120000000000035,var=0.916243175111,skewness=-0.05620397522838698,kurtosis=-1.4452461762050945,std=0.9572059209548963)
+    print "MATLAB",matstat    
+    print "OUR",ourstat
+    s = LiveStat("x")
+    for x in X:
+        s.add(x)
+    print s 
+
 
 
 
