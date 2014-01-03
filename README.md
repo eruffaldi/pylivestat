@@ -8,7 +8,9 @@ Properties:
 - count
 - min,max,mean
 - std and variance
-- kurtosis and skewness
+- kurtosis and skewness # allows to measure the "normality of the dataset"
+
+The main class is LiveStat to which data can be appended with append(x). For incremental values the DeltaLiveStat provides an easy to use helper.
 
 Usage:
 
@@ -22,15 +24,15 @@ Usage:
 	x = DeltaLiveStat("dt")
 	x.append(10)
 	x.append(20)
-	print x # count is 1
+	print x # count is 1 containing the difference
 
 	#also from array
 	x.extend([10,20,30,40,50])
 
-Extra Options: 
+Extra Features: 
 	
-	# the LiveStat objects can be combined for example when performed in multiprocessing context
-	x.merge(y)
+	# the LiveStat objects can be combined for example when performing over different data Windows or in a multiprocessing environment
+	x.merge(y) # now x contains the merge of the statistics
 
 	# the LiveStat object can be multipled by scalar or translated, for the objective of performing some unit transformation. All the measures are transformed appropriately
 	x + 5
@@ -43,6 +45,8 @@ In progress:
 
 Related
 =========
-The faststat package is similar
+The faststat package is similar:
 	https://pypi.python.org/pypi/faststat/
 	https://github.com/doublereedkurt/faststat/
+
+
