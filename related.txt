@@ -1,0 +1,8 @@
+
+
+Related Packages from pypi
+==========================
+https://pypi.python.org/pypi/py_descriptive_statistics
+
+
+https://pypi.python.org/pypi/scikits.statsmodels/
