@@ -96,14 +96,14 @@ def moments2stat(mA):
     n,mean,M2,M3,M4 = mA
     nf = float(n)
     v = M2/(nf-1)
-    popv = M2/nf
     sigma = math.sqrt(v)
+    popv = M2/nf # biased
 
-    #sk = math.sqrt(nf)*M3/(M2**1.5) = mu3/sigma^3
-    sk = (M3/nf)/(sigma**3)
-
-    # ku = mu4/sigma^4 - 3
-    ku = (M4/nf)/sigma**4 - 3
+    mu4 = M4/nf
+    mu2 = M2/nf
+    mu3 = M3/nf
+    sk = mu3/(mu2**1.5)
+    ku = mu4/(mu2**2)
     return dict(count=n,mean=mean,std=sigma,var=v,popvar=popv,kurtosis=ku,skewness=sk)
 
 # converts statistics dictionary to tuple, inverse of moments2stat
@@ -127,8 +127,10 @@ def stat2moments(mA):
         sigma = 0
     sk = mA.get("skewness",0)
     ku = mA.get("kurtosis",0)
-    M3 = nf*sk*(sigma**3)
-    M4 = (ku+3)*(sigma**4)*nf
+    
+    mu2 = M2/nf
+    M3 = nf*sk*(mu2**1.5)
+    M4 = nf*ku*(mu2**2)
     return (n,mean,M2,M3,M4)
 
 # given sequence of number computes moments at once

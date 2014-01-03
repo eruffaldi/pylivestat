@@ -92,12 +92,16 @@ class LiveStat:
         self.vmin = None
         self.vmax = None
         self.vmean = None
-        self.vvar = None
         self.vsum = None
         self.vm2 = None
-        self.vcount = None
-        self.vcount2 = None
+        self.vm3 = None
+        self.vm4 = None
+
+        self.vcount = 0
+        self.vcount2 = 0
+
         self.dirty = False
+        self.vvar = None
         self.vcurtosis = None
         self.vskewness = None
     def _finalize(self):
@@ -164,9 +168,45 @@ class LiveStat:
                 self.vm2 /= value*value
                 self.dirty = True
         return self
-
-
+    def extend(self,data):        
+        """Extend from sequence"""
+        n = float(len(data))
+        if n == 0:
+            return self
+        M2 = 0
+        M3 = 0
+        M4 = 0
+        mean = 0
+        vmin = None
+        vmax = None
+        for x in data:
+            mean += x/n   
+            if vmin is None:
+                vmax = x
+                vmin = x
+            if x < vmin:
+                vmin = x
+            if x > vmax:
+                vmax = x
+        for x in data:
+            d = x-mean
+            M2 += (d**2)
+            M3 += (d**3)
+            M4 += (d**4)
+        x = LiveStat(self.name)
+        x.vmin = vmin
+        x.vmax = vmax
+        x.vmean = mean
+        x.vm2 = M2
+        x.vm3 = M3
+        x.vm4 = M4
+        x.vcount = int(n)
+        x.vcount2 = x.vcount**2
+        x.dirty = True
+        self.merge(x)
+        return self
     def __add__(self,value):
+        """Addition operator: scalar applied to all terms x_i"""
         x = self.clone()
         if isinstance(value,LiveStat):
             x.name = "(" + self.name + "+" + value.name + ")"
@@ -175,6 +215,7 @@ class LiveStat:
         x += value
         return x
     def __sub__(self,value):
+        """Subtraction operator: scalar applied to all terms x_i"""
         x = self.clone()
         if isinstance(value,LiveStat):
             x.name = "(" + self.name + "-" + value.name + ")"
@@ -183,6 +224,7 @@ class LiveStat:
         x -= value
         return x
     def __mul__(self,value):
+        """Scales all terms by value"""
         x = self.clone()
         if isinstance(value,LiveStat):
             x.name = "(" + self.name + "*" + value.name + ")"
@@ -191,6 +233,7 @@ class LiveStat:
         x *= value
         return x
     def __div__(self,value):
+        """Divides all terms by value"""
         x = self.clone()
         if isinstance(value,LiveStat):
             x.name = "(" + self.name + "/" + value.name + ")"
@@ -261,7 +304,7 @@ class LiveStat:
         r.copy(self)
         return r
     def copy(self,other):
-        """Assignment from the other"""
+        """Assignment"""
         if other.vcount == 0:
             self.reset()
         else:
@@ -277,9 +320,9 @@ class LiveStat:
             self.name = other.name
             self.dirty = True
         return self
-    def add(self,x):
+    def append(self,x):
         """Appends a new item"""
-        if self.vcount is None:
+        if self.empty:
             self.vcount = 1
             self.vcount2 = 1
             self.vmin = x
@@ -309,9 +352,10 @@ class LiveStat:
             delta3 = delta**3
             delta4 = delta**4
             self.vmean += delta/nX # incremental mean (good for vectorial)
-            self.vm2 += (x-self.vmean)*delta # incremental quadratic for variance (good for vectorial)
             self.vm3 += delta3*(nA*(nA-1))/nXX - 3*delta*self.vm2/nX
             self.vm4 += delta4*(nA*(nAA-nA+1))/nXXX + 6*delta2*(self.vm2)/nXX - 4*delta*self.vm3/nX
+            # note is done at end
+            self.vm2 += delta2*nA/nX # incremental quadratic for variance (good for vectorial)
             self.vsum += x
 
             self.dirty = True
@@ -385,7 +429,7 @@ class DeltaLiveStat(LiveStat):
         self.last = other.last
         self.dlast = other.dlast
         return self
-    def add(self,x):
+    def append(self,x):
         """Adds a new item. If x is None this means to reset the input"""
         if x is None:
             self.last = None
@@ -394,7 +438,7 @@ class DeltaLiveStat(LiveStat):
             self.dlast = 0
         else:
             self.dlast = x-self.last
-            LiveStat.add(self,float(self.dlast))
+            LiveStat.append(self,float(self.dlast))
             self.last = x
     def __str__(self):
         self._finalize()
@@ -417,7 +461,7 @@ class Counter:
     @property
     def empty(self):
         return self.c == 0
-    def add(self,x):
+    def append(self,x):
         self.c += x
     def __str__(self):
         return str(self.c)
@@ -450,8 +494,8 @@ class Histogram:
     @property
     def count(self):
         return self.count
-    def add(self,x,y=1):
-        self.items[x].add(y)
+    def append(self,x,y=1):
+        self.items[x].append(y)
         self.count += 1
     def reset(self):
         self.items = defaultdict(self.cz)
@@ -463,14 +507,14 @@ class Histogram:
 if __name__ == "__main__":
 
     x = LiveStat("x")
-    x.add(10)
-    x.add(20)
-    x.add(15)
+    x.append(10)
+    x.append(20)
+    x.append(15)
 
     y = LiveStat("y")
-    y.add(210)
-    y.add(220)
-    y.add(215)
+    y.append(210)
+    y.append(220)
+    y.append(215)
     print "x",x
     print "y",y
 
@@ -486,21 +530,21 @@ if __name__ == "__main__":
     print "(x+2)*-2",x*-2
 
     x = DeltaLiveStat()
-    x.add(10)
-    x.add(20)
-    x.add(15)
+    x.append(10)
+    x.append(20)
+    x.append(15)
     print x
 
     X = [0.7481,-0.1924,0.8886,-0.7648,-1.4023,-1.4224,0.4882,-0.1774,-0.1961,1.4193]
     matstat = dict(count=len(X),mean=-0.0611,var=0.9162,skewness=-0.0658,kurtosis=1.9194,std=0.9572)
-    ourstat = dict(count=len(X),mean=-0.061120000000000035,var=0.916243175111,skewness=-0.05620397522838698,kurtosis=-1.4452461762050945,std=0.9572059209548963)
     print "MATLAB",matstat    
-    print "OUR",ourstat
     s = LiveStat("x")
     for x in X:
-        s.add(x)
+        s.append(x)
     print s 
-
+    s = LiveStat("x")
+    s.extend(X)
+    print s 
 
 
 
