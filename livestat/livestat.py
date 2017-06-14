@@ -87,7 +87,10 @@ class LiveStat:
         """Returns the sample standard deviation of the values. None if no items"""
         if self.dirty:
             self._finalize()
-        return math.sqrt(self.vvar)
+        if self.vvar is None:
+            return 0
+        else:
+            return math.sqrt(self.vvar)
 
     def reset(self):
         """Resets the accumulator"""
@@ -117,8 +120,12 @@ class LiveStat:
             nf = float(n)
             mu2 = self.vm2/nf
             self.vvar = self.vm2/(nf-1)
-            self.vskewness = self.vm3/nf/(mu2**1.5)
-            self.vkurtosis = self.vm4/nf/(mu2**2)
+            try:
+                self.vskewness = self.vm3/nf/(mu2**1.5)
+                self.vkurtosis = self.vm4/nf/(mu2**2)
+            except:
+                self.vskewness = 0
+                self.vkurtosis = 0
         elif self.vcount == 1:
             self.vvar = 0
             self.vmean = 0
@@ -397,6 +404,9 @@ class LiveStat:
         self.vm4 += other.vm4 + delta4*(nAB*(nAA-nAB+nBB))/nXXX + 6*delta2*(nAA*other.vm2+nBB*self.vm2)/nXX + 4*delta*(nA*other.vm3-nB*self.vm3)/nX
         self.dirty = True
         return self
+    def asdict(self,prefix):
+        self._finalize()
+        return dict([(prefix+"mean",self.vmean),(prefix+"min",self.vmin),(prefix+"max",self.vmax),(prefix+"std",self.std),(prefix+"skew",self.vskewness),(prefix+"count",self.count)])
     def __str__(self):
         """String representation"""
         self._finalize()
