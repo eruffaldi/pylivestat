@@ -1,6 +1,7 @@
 
-livestat
-========
+# livestat
+
+![livestat](icon.png)
 
 Python module to compute running statistics over data, like when measuring timings from a stream.
 
