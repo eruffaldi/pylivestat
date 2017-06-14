@@ -10,7 +10,7 @@ def read(fname):
 
 setup(
     name = "livestat",
-    version = "0.1",
+    version = "0.1.1",
     author = "Emanuele Ruffaldi",
     author_email = "emanuele.ruffaldi@gmail.com",
     description = ("Computing descriptive statistics over streaming data"),

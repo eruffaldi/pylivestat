@@ -42,9 +42,13 @@ In progress:
 - numpy support
 - normality test
 
+Package Repository
+==================
+This project is maintained here: https://github.com/sankazim/pylivestat
+
 
 Related
-=========
+===========
 The faststat package is similar:
 	https://pypi.python.org/pypi/faststat/
 	https://github.com/doublereedkurt/faststat/

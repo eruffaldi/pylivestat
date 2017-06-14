@@ -2,7 +2,49 @@
 
 Related Packages from pypi
 ==========================
+Small overview of Python modules with similar functionality
+
+https://pypi.python.org/pypi/faststat/
+	Similar functionality
+
+	Pros:
+		- percentiles over last N values
+		- buckets 
+		- exponential averages
+	Cons:
+		- lacks aggregation of multiple stats, scaling of stats
+
+https://pypi.python.org/pypi/statio/
+	Sliding Window over static data
+
 https://pypi.python.org/pypi/py_descriptive_statistics
+	Over static data
+
+https://pypi.python.org/pypi/statlib/
+	Over static data
 
 
 https://pypi.python.org/pypi/scikits.statsmodels/
+	Over static data
+
+https://pypi.python.org/pypi/statspy/
+	Bayesian modeling and Hypothesis Testing
+
+https://pypi.python.org/pypi/mathstats/
+
+https://pypi.python.org/pypi/simplestats/
+
+https://pypi.python.org/pypi/PyStats/
+	EMPTY
+
+https://pypi.python.org/pypi/gpustats/
+	GPU based
+
+https://pypi.python.org/pypi/stats-tools/
+	Command Line
+
+https://pypi.python.org/pypi/statsmodels/
+	Large module
+
+https://pypi.python.org/pypi/statlab/
+	for pylab
