@@ -1,6 +1,7 @@
 
-livestat
-========
+# livestat
+
+![livestat](icon.png)
 
 Python module to compute running statistics over data, like when measuring timings from a stream.
 
@@ -53,13 +54,17 @@ Planned
 
 Package Repository
 ==================
-This project is maintained here: https://github.com/sankazim/pylivestat
+This project is maintained here: https://github.com/eruffaldi/pylivestat
 
 
 Related
 ===========
 The faststat package is similar:
+
 	https://pypi.python.org/pypi/faststat/
 	https://github.com/doublereedkurt/faststat/
+	
+More sophisticated features can be found in scipy.stats
+	https://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/stats.html
 
 
