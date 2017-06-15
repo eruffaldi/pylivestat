@@ -21,6 +21,10 @@
 from collections import defaultdict
 import math
 try:
+    from scipy.stats.distributions import chi2
+except:
+    chi2 = None
+try:
     import numpy
 except:
     numpy = None
@@ -46,8 +50,13 @@ class LiveStat:
         """Returns the sum of the values. None if no items"""
         return self.vsum
     @property
+    def excesskurtosis(self):
+        """Returns the kurtosis of the distribution, that is the flatness. Value si 0 for Gaussians"""
+        self._finalize()
+        return self.vkurtosis-3
+    @property
     def kurtosis(self):
-        """Returns the kurtosis of the distribution, that is the flatness. Zero for Gaussians"""
+        """Returns the kurtosis of the distribution, that is the flatness. Value si 3 for Gaussians"""
         self._finalize()
         return self.vkurtosis
     @property
@@ -55,14 +64,28 @@ class LiveStat:
         """Returns the skewness as the asymmetri before/after the mean. Zero for Gaussians"""
         self._finalize()
         return self.vskewness
-    @property
-    def jarquebetatest(self,alpha=0.05):
-        """Returns the Jarque-Beta test of normality based on kurtosis and skewness"""
+    def jarque_bera(self,alpha=0.05):
+        """Returns the Jarque-Bera test of normality based on kurtosis and skewness
+        Requires > 2000 samples
+
+        Returns test statistics and the p-value
+
+        Original in scipy:
+            mu = x.mean()
+            diffx = x - mu
+            skewness = (1 / n * np.sum(diffx**3)) / (1 / n * np.sum(diffx**2))**(3 / 2.)
+            kurtosis = (1 / n * np.sum(diffx**4)) / (1 / n * np.sum(diffx**2))**2
+            jb_value = n / 6 * (skewness**2 + (kurtosis - 3)**2 / 4)
+            p = 1 - distributions.chi2.cdf(jb_value, 2)
+
+        Look at scipy.stats.jarque_bera"""
         self._finalize()
-        JB = self.vcount/6*(self.vskewness**2 + 1/4*((self.vkurtosis-2)**2))
-        #the JB statistic asymptotically has a chi-squared distribution with two degrees of freedom, so the statistic can be used to test the hypothesis that the data are from a normal distribution.
-        """If the data comes from a normal distribution, the JB statistic asymptotically has a chi-squared distribution with two degrees of freedom, so the statistic can be used to test the hypothesis that the data are from a normal distribution. The null hypothesis is a joint hypothesis of the skewness being zero and the excess kurtosis being zero. Samples from a normal distribution have an expected skewness of 0 and an expected excess kurtosis of 0 (which is the same as a kurtosis of 3). As the definition of JB shows, any deviation from this increases the JB statistic."""
-        raise Exception("Not implemented")
+        JB = self.vcount/6*(self.vskewness**2 + 1/4*((self.vkurtosis-3)**2))
+        if chi2 is None:
+            p = "scipy missing"
+        else:
+            p = 1 - chi2.cdf(JB,2)
+        return JB,p
     @property
     def mean(self):
         """Returns the sample mean of the values. None if no items"""
@@ -103,8 +126,9 @@ class LiveStat:
         self.vm4 = None
 
         self.vcount = 0
-        self.vcount2 = 0
+        self.vcountsq = 0
 
+        # computed variables
         self.dirty = False
         self.vvar = None
         self.vcurtosis = None
@@ -128,7 +152,6 @@ class LiveStat:
                 self.vkurtosis = 0
         elif self.vcount == 1:
             self.vvar = 0
-            self.vmean = 0
             self.vskewness = 0
             self.vkurtosis = 0
         self.dirty = False
@@ -152,6 +175,7 @@ class LiveStat:
                     self.vmax *= value
                 self.vsum *= value
                 self.vm2 *= value*value
+                print ("div Missing: M3 and M4")
                 # no effect on vm4
                 self.dirty = True
         return self
@@ -175,10 +199,14 @@ class LiveStat:
                 self.vsum /= value
                 # vm2(s x) = sum (s x - mu(s x))^2 = sum (s x - s mu(x))^2 = sum s^2 (x - mu(x))^2 = s^2 sum (x - mu(x))^2 = s^2 vm^2
                 self.vm2 /= value*value
+                print ("div Missing: M3 and M4")
                 self.dirty = True
         return self
     def extend(self,data):        
-        """Extend from sequence"""
+        """Extend from sequence
+
+        TODO numpy array support
+        """
         n = float(len(data))
         if n == 0:
             return self
@@ -210,7 +238,7 @@ class LiveStat:
         x.vm3 = M3
         x.vm4 = M4
         x.vcount = int(n)
-        x.vcount2 = x.vcount**2
+        x.vcountsq = x.vcount**2
         x.dirty = True
         self.merge(x)
         return self
@@ -268,8 +296,9 @@ class LiveStat:
                 self.vm2 += value.vm2
                 # TODO vm3 vm4
                 self.vcount = min(value.vcount,self.vcount)
-                self.vcount2 = self.vcount**2
+                self.vcountsq = self.vcount**2
                 self.dirty = True
+                print ("add Missing: M3 and M4")
         else:
             # constant bias
             if self.vmin is not None:
@@ -277,6 +306,7 @@ class LiveStat:
                 self.vmax += value
                 self.vmean += value
                 self.vsum += self.vcount*value
+                print ("add Missing: M3 and M4")
                 self.dirty = True
         return self
     def __isub__(self,value):
@@ -297,8 +327,9 @@ class LiveStat:
                 self.vm2 += value.vm2
                 # TODO vm3 vm4
                 self.vcount = min(self.vcount,value.vcount)
-                self.vcount2 = self.vcount**2
+                self.vcountsq = self.vcount**2
                 self.dirty = True
+                print ("sub Missing: M3 and M4")
         else:
             # constant bias
             if self.vmin is not None:
@@ -307,7 +338,14 @@ class LiveStat:
                 self.vmean -= value
                 self.vsum -= self.vcount*value
                 self.dirty = True
+                print ("sub Missing: M3 and M4")
         return self    
+    def standardize(self):
+        self._finalize()
+        return (self - self.vmean)/(self.std if self.vcount > 1 else 1)
+    def minmax_normalize(self):
+        self._finalize()
+        return (self - self.vmin)/(self.vmax-self.vmin if self.vcount > 1 else 1)
     def clone(self):
         r = LiveStat(self.name)
         r.copy(self)
@@ -318,7 +356,7 @@ class LiveStat:
             self.reset()
         else:
             self.vcount = other.vcount
-            self.vcount2 = other.vcount2
+            self.vcountsq = other.vcountsq
             self.vmin = other.vmin
             self.vmax = other.vmax
             self.vm2 = other.vm2
@@ -333,7 +371,7 @@ class LiveStat:
         """Appends a new item"""
         if self.empty:
             self.vcount = 1
-            self.vcount2 = 1
+            self.vcountsq = 1
             self.vmin = x
             self.vmax = x
             self.vsum = x
@@ -344,12 +382,12 @@ class LiveStat:
             self.dirty = True
         else:
             nA = self.vcount
-            nAA = self.vcount2
+            nAA = self.vcountsq
             nX = nA+1
             nXX = nX**2
             nXXX = nX**3
             self.vcount = nX
-            self.vcount2 = nXX
+            self.vcountsq = nXX
 
             if x < self.vmin:
                 self.vmin = x
@@ -383,13 +421,13 @@ class LiveStat:
         nA = float(self.vcount)
         nB = float(other.vcount)
         nAB = nA*nB
-        nAA = float(self.vcount2)
-        nBB = float(other.vcount2)
+        nAA = float(self.vcountsq)
+        nBB = float(other.vcountsq)
         nX = nA+nB
         nXX = nX**2 #nAA+nBB+2*nAB #nX**2 # actually (nA+nB)^2 = (nAA+nBB+2*nAB)
         nXXX = nXX*nX
         self.vcount = nX
-        self.vcount2 = nXX
+        self.vcountsq = nXX
 
         self.vsum += other.vsum;
 
@@ -404,9 +442,10 @@ class LiveStat:
         self.vm4 += other.vm4 + delta4*(nAB*(nAA-nAB+nBB))/nXXX + 6*delta2*(nAA*other.vm2+nBB*self.vm2)/nXX + 4*delta*(nA*other.vm3-nB*self.vm3)/nX
         self.dirty = True
         return self
-    def asdict(self,prefix):
+    def asdict(self):
         self._finalize()
-        return dict([(prefix+"mean",self.vmean),(prefix+"min",self.vmin),(prefix+"max",self.vmax),(prefix+"std",self.std),(prefix+"skew",self.vskewness),(prefix+"count",self.count)])
+        prefix = self.name
+        return dict([(prefix+"_mean",self.vmean),(prefix+"_min",self.vmin),(prefix+"_max",self.vmax),(prefix+"_std",self.std),(prefix+"_skew",self.vskewness),(prefix+"_count",self.count),(prefix+"_sum",self.vsum),(prefix+"_kurtosis",self.vkurtosis)])
     def __str__(self):
         """String representation"""
         self._finalize()

@@ -8,7 +8,15 @@ Properties:
 - count
 - min,max,mean
 - std and variance
-- kurtosis and skewness # allows to measure the "normality of the dataset"
+- kurtosis and skewness 
+- merge of two livestats preserving statistics
+- arithmetic operation over stat: + - * /
+- standardization of the stat: uses mean and std to compute offset and scaling and then applies to the data updating the other statistics
+- minmax normalization to [0,1]: uses mean and std to compute offset and scaling and then applies to the data updating the other statistics
+
+Normality tests:
+- jarque_bera
+- kurtosis and skewness 
 
 The main class is LiveStat to which data can be appended with append(x). For incremental values the DeltaLiveStat provides an easy to use helper.
 
@@ -38,9 +46,10 @@ Extra Features:
 	x + 5
 	x * 5
 
-In progress:
-- numpy support
-- normality test
+Planned
+=======
+
+- numpy support for fast forwarding append, and for vectorial statistics
 
 Package Repository
 ==================
